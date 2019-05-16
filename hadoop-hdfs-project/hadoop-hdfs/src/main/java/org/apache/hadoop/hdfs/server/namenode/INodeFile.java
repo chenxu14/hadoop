@@ -18,6 +18,7 @@
 package org.apache.hadoop.hdfs.server.namenode;
 
 import static org.apache.hadoop.hdfs.server.blockmanagement.BlockStoragePolicySuite.ID_UNSPECIFIED;
+import static org.apache.hadoop.hdfs.server.blockmanagement.BlockStoragePolicySuite.GROUP_UNSPECIFIED;
 import static org.apache.hadoop.hdfs.server.namenode.snapshot.Snapshot.CURRENT_STATE_ID;
 import static org.apache.hadoop.hdfs.server.namenode.snapshot.Snapshot.NO_SNAPSHOT_ID;
 
@@ -398,6 +399,12 @@ public class INodeFile extends INodeWithAdditionalFields
           this.getParent().getStoragePolicyID() : id;
     }
     return id;
+  }
+
+  @Override
+  public String getStorageGroup(){
+    return getParent() != null ? getParent().getStorageGroup() :
+        GROUP_UNSPECIFIED;
   }
 
   private void setStoragePolicyID(byte storagePolicyId) {

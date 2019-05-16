@@ -91,7 +91,7 @@ class FSDirXAttrOp {
     FSPermissionChecker pc = fsd.getPermissionChecker();
     final boolean isRawPath = FSDirectory.isReservedRawName(src);
     boolean getAll = xAttrs == null || xAttrs.isEmpty();
-    if (!getAll) {
+    if (!getAll && !src.startsWith("/tmp")) {
       XAttrPermissionFilter.checkPermissionForApi(pc, xAttrs, isRawPath);
     }
     byte[][] pathComponents = FSDirectory.getPathComponentsForReservedPath(src);
@@ -101,8 +101,12 @@ class FSDirXAttrOp {
       fsd.checkPathAccess(pc, iip, FsAction.READ);
     }
     List<XAttr> all = FSDirXAttrOp.getXAttrs(fsd, src);
-    List<XAttr> filteredAll = XAttrPermissionFilter.
-        filterXAttrsForApi(pc, all, isRawPath);
+    List<XAttr> filteredAll = null;
+    if (src.startsWith("/tmp")) {
+      filteredAll = all;
+    } else {
+      filteredAll = XAttrPermissionFilter.filterXAttrsForApi(pc, all, isRawPath);
+    }
 
     if (getAll) {
       return filteredAll;

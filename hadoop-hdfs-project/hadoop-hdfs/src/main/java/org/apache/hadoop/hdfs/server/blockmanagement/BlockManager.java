@@ -1509,7 +1509,8 @@ public class BlockManager {
       DatanodeDescriptor clientnode, Set<Node> excludes, long blocksize) {
     return blockplacement.chooseTarget(src, 1, clientnode,
         Collections.<DatanodeStorageInfo>emptyList(), false, excludes,
-        blocksize, storagePolicySuite.getDefaultPolicy());
+        blocksize, storagePolicySuite.getDefaultPolicy(),
+        BlockStoragePolicySuite.GROUP_UNSPECIFIED);
   }
 
   /** Choose target for getting additional datanodes for an existing pipeline. */
@@ -1519,11 +1520,11 @@ public class BlockManager {
       List<DatanodeStorageInfo> chosen,
       Set<Node> excludes,
       long blocksize,
-      byte storagePolicyID) {
-    
+      byte storagePolicyID,
+      String storageGroup) {
     final BlockStoragePolicy storagePolicy = storagePolicySuite.getPolicy(storagePolicyID);
     return blockplacement.chooseTarget(src, numAdditionalNodes, clientnode,
-        chosen, true, excludes, blocksize, storagePolicy);
+        chosen, true, excludes, blocksize, storagePolicy, storageGroup);
   }
 
   /**
@@ -1539,13 +1540,14 @@ public class BlockManager {
       final Set<Node> excludedNodes,
       final long blocksize,
       final List<String> favoredNodes,
-      final byte storagePolicyID) throws IOException {
+      final byte storagePolicyID,
+      final String storageGroup) throws IOException {
     List<DatanodeDescriptor> favoredDatanodeDescriptors = 
         getDatanodeDescriptors(favoredNodes);
     final BlockStoragePolicy storagePolicy = storagePolicySuite.getPolicy(storagePolicyID);
     final DatanodeStorageInfo[] targets = blockplacement.chooseTarget(src,
         numOfReplicas, client, excludedNodes, blocksize, 
-        favoredDatanodeDescriptors, storagePolicy);
+        favoredDatanodeDescriptors, storagePolicy, storageGroup);
     if (targets.length < minReplication) {
       throw new IOException("File " + src + " could only be replicated to "
           + targets.length + " nodes instead of minReplication (="
@@ -3375,6 +3377,10 @@ public class BlockManager {
     return blocksMap.size();
   }
 
+  public int getBlocksNoGroupLocal(){
+    return blockplacement.getBlocksNoGroupLocal();
+  }
+
   public void removeBlock(Block block) {
     assert namesystem.hasWriteLock();
     // No need to ACK blocks that are being removed entirely
@@ -3741,7 +3747,7 @@ public class BlockManager {
         targets = blockplacement.chooseTarget(bc.getName(),
             additionalReplRequired, srcNode, liveReplicaStorages, false,
             excludedNodes, block.getNumBytes(),
-            storagePolicySuite.getPolicy(bc.getStoragePolicyID()));
+            storagePolicySuite.getPolicy(bc.getStoragePolicyID()), bc.getStorageGroup());
       } finally {
         srcNode.decrementPendingReplicationWithoutTargets();
       }

@@ -23,6 +23,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 
@@ -36,6 +38,7 @@ import org.apache.hadoop.classification.InterfaceStability;
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
 public class CachedDNSToSwitchMapping extends AbstractDNSToSwitchMapping {
+  static final Log LOG = LogFactory.getLog(CachedDNSToSwitchMapping.class);
   private Map<String, String> cache = new ConcurrentHashMap<String, String>();
 
   /**
@@ -153,6 +156,7 @@ public class CachedDNSToSwitchMapping extends AbstractDNSToSwitchMapping {
   @Override
   public void reloadCachedMappings() {
     cache.clear();
+    LOG.info("reload Cached Mappings successfully");
   }
 
   @Override

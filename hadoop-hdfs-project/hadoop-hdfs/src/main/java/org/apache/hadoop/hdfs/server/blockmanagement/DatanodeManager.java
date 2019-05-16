@@ -951,6 +951,7 @@ public class DatanodeManager {
             removeDatanode(nodeS);
             wipeDatanode(nodeS);
             countSoftwareVersions();
+            dnsToSwitchMapping.reloadCachedMappings();
           }
         }
         return;

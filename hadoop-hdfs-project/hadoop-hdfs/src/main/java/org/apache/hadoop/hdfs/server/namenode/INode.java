@@ -710,6 +710,11 @@ public abstract class INode implements INodeAttributes, Diff.Element<byte[]> {
   public abstract byte getStoragePolicyID();
 
   /**
+   * @return the group name if StorageType is Group
+   */
+  public abstract String getStorageGroup();
+
+  /**
    * @return the storage policy directly specified on the INode. Return
    * {@link BlockStoragePolicySuite#ID_UNSPECIFIED} if no policy has
    * been specified.

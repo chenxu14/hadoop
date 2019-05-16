@@ -127,6 +127,11 @@ public class INodeMap {
       }
 
       @Override
+      public String getStorageGroup(){
+        return BlockStoragePolicySuite.GROUP_UNSPECIFIED;  
+      }
+
+      @Override
       public byte getLocalStoragePolicyID() {
         return BlockStoragePolicySuite.ID_UNSPECIFIED;
       }

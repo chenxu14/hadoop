@@ -4411,6 +4411,7 @@ public abstract class FSEditLogOp {
   static class SetStoragePolicyOp extends FSEditLogOp {
     String path;
     byte policyId;
+    String group;
 
     private SetStoragePolicyOp() {
       super(OP_SET_STORAGE_POLICY);
@@ -4424,6 +4425,7 @@ public abstract class FSEditLogOp {
     void resetSubFields() {
       path = null;
       policyId = 0;
+      group = BlockStoragePolicySuite.GROUP_UNSPECIFIED;
     }
 
     SetStoragePolicyOp setPath(String path) {
@@ -4436,16 +4438,33 @@ public abstract class FSEditLogOp {
       return this;
     }
 
+    SetStoragePolicyOp setStorageGroup(String group) {
+      this.group = group;
+      return this;
+    }
+
     @Override
     public void writeFields(DataOutputStream out) throws IOException {
-      FSImageSerialization.writeString(path, out);
+      String groupPath = path;
+      if(group != null && !group.equals(BlockStoragePolicySuite.GROUP_UNSPECIFIED)){
+        groupPath = group + "::" + path;
+      }
+      FSImageSerialization.writeString(groupPath, out);
       out.writeByte(policyId);
     }
 
     @Override
     void readFields(DataInputStream in, int logVersion)
         throws IOException {
-      this.path = FSImageSerialization.readString(in);
+      String groupPath = FSImageSerialization.readString(in);
+      if (groupPath != null && groupPath.indexOf("::") != -1) {
+        String[] infos = groupPath.split("::");
+        this.group = infos[0];
+        this.path = infos[1];
+      } else {
+        this.path = groupPath;
+        this.group = BlockStoragePolicySuite.GROUP_UNSPECIFIED;
+      }
       this.policyId = in.readByte();
     }
 
@@ -4456,6 +4475,8 @@ public abstract class FSEditLogOp {
       builder.append(path);
       builder.append(", policyId=");
       builder.append(policyId);
+      builder.append(", group=");
+      builder.append(group);
       builder.append(", opCode=");
       builder.append(opCode);
       builder.append(", txid=");
@@ -4469,12 +4490,14 @@ public abstract class FSEditLogOp {
       XMLUtils.addSaxString(contentHandler, "PATH", path);
       XMLUtils.addSaxString(contentHandler, "POLICYID",
           Byte.valueOf(policyId).toString());
+      XMLUtils.addSaxString(contentHandler, "GROUP", group);
     }
 
     @Override
     void fromXml(Stanza st) throws InvalidXmlException {
       this.path = st.getValue("PATH");
       this.policyId = Byte.valueOf(st.getValue("POLICYID"));
+      this.group = st.getValue("GROUP");
     }
   }  
 

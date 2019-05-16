@@ -30,6 +30,7 @@ import org.apache.hadoop.util.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /** A collection of block storage policies. */
@@ -39,10 +40,13 @@ public class BlockStoragePolicySuite {
 
   public static final String STORAGE_POLICY_XATTR_NAME
       = "hsm.block.storage.policy.id";
-  public static final XAttr.NameSpace XAttrNS = XAttr.NameSpace.SYSTEM;
+  public static final String STORAGE_POLICY_GROUP_NAME
+      = "hsm.block.storage.group";
+  public static final XAttr.NameSpace XAttrNS = XAttr.NameSpace.TRUSTED;
 
   public static final int ID_BIT_LENGTH = 4;
   public static final byte ID_UNSPECIFIED = 0;
+  public static final String GROUP_UNSPECIFIED = "NONE";
 
   @VisibleForTesting
   public static BlockStoragePolicySuite createDefaultSuite() {
@@ -136,13 +140,27 @@ public class BlockStoragePolicySuite {
         + "." + STORAGE_POLICY_XATTR_NAME;
   }
 
-  public static XAttr buildXAttr(byte policyId) {
-    final String name = buildXAttrName();
-    return XAttrHelper.buildXAttr(name, new byte[]{policyId});
+  public static String buildGroupName() {
+    return StringUtils.toLowerCase(XAttrNS.toString())
+        + "." + STORAGE_POLICY_GROUP_NAME;
+  }
+
+  public static List<XAttr> buildXAttr(byte policyId, String groupName) {
+    List<XAttr> res = new ArrayList<XAttr>();
+    res.add(XAttrHelper.buildXAttr(buildXAttrName(), new byte[]{policyId}));
+    if (groupName != null) {
+      res.add(XAttrHelper.buildXAttr(buildGroupName(), groupName.getBytes()));
+    }
+    return res;
   }
 
   public static boolean isStoragePolicyXAttr(XAttr xattr) {
     return xattr != null && xattr.getNameSpace() == XAttrNS
         && xattr.getName().equals(STORAGE_POLICY_XATTR_NAME);
+  }
+
+  public static boolean isStoragePolicyGroupXAttr(XAttr xattr) {
+    return xattr != null && xattr.getNameSpace() == XAttrNS
+        && xattr.getName().equals(STORAGE_POLICY_GROUP_NAME);
   }
 }

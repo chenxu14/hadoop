@@ -859,9 +859,9 @@ public class FSEditLog implements LogsPurgeable {
   /** 
    * Add set storage policy id record to edit log
    */
-  void logSetStoragePolicy(String src, byte policyId) {
+  void logSetStoragePolicy(String src, byte policyId, String group) {
     SetStoragePolicyOp op = SetStoragePolicyOp.getInstance(cache.get())
-        .setPath(src).setPolicyId(policyId);
+        .setPath(src).setPolicyId(policyId).setStorageGroup(group);
     logEdit(op);
   }
 

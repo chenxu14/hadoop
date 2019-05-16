@@ -164,6 +164,12 @@ public class FSDirAttrOp {
   static HdfsFileStatus setStoragePolicy(
       FSDirectory fsd, BlockManager bm, String src, final String policyName)
       throws IOException {
+	  return setStoragePolicy(fsd, bm, src, policyName, null);
+  }
+
+  static HdfsFileStatus setStoragePolicy(
+      FSDirectory fsd, BlockManager bm, String src, final String policyName, String groupName)
+      throws IOException {
     if (!fsd.isStoragePolicyEnabled()) {
       throw new IOException(
           "Failed to set storage policy since "
@@ -187,8 +193,8 @@ public class FSDirAttrOp {
         throw new HadoopIllegalArgumentException(
             "Cannot find a block policy with the name " + policyName);
       }
-      unprotectedSetStoragePolicy(fsd, bm, iip, policy.getId());
-      fsd.getEditLog().logSetStoragePolicy(src, policy.getId());
+      unprotectedSetStoragePolicy(fsd, bm, iip, policy.getId(), groupName);
+      fsd.getEditLog().logSetStoragePolicy(src, policy.getId(), groupName);
     } finally {
       fsd.writeUnlock();
     }
@@ -414,7 +420,7 @@ public class FSDirAttrOp {
   }
 
   static void unprotectedSetStoragePolicy(
-      FSDirectory fsd, BlockManager bm, INodesInPath iip, byte policyId)
+      FSDirectory fsd, BlockManager bm, INodesInPath iip, byte policyId, String groupName)
       throws IOException {
     assert fsd.hasWriteLock();
     final INode inode = iip.getLastINode();
@@ -440,7 +446,7 @@ public class FSDirAttrOp {
       }
       inode.asFile().setStoragePolicyID(policyId, snapshotId);
     } else if (inode.isDirectory()) {
-      setDirStoragePolicy(fsd, inode.asDirectory(), policyId, snapshotId);
+      setDirStoragePolicy(fsd, inode.asDirectory(), policyId, groupName, snapshotId);
     } else {
       throw new FileNotFoundException(iip.getPath()
           + " is not a file or directory");
@@ -449,14 +455,11 @@ public class FSDirAttrOp {
 
   private static void setDirStoragePolicy(
       FSDirectory fsd, INodeDirectory inode, byte policyId,
-      int latestSnapshotId) throws IOException {
+      String groupName, int latestSnapshotId) throws IOException {
     List<XAttr> existingXAttrs = XAttrStorage.readINodeXAttrs(inode);
-    XAttr xAttr = BlockStoragePolicySuite.buildXAttr(policyId);
-    List<XAttr> newXAttrs = FSDirXAttrOp.setINodeXAttrs(fsd, existingXAttrs,
-                                                        Arrays.asList(xAttr),
-                                                        EnumSet.of(
-                                                            XAttrSetFlag.CREATE,
-                                                            XAttrSetFlag.REPLACE));
+    List<XAttr> xAttrs = BlockStoragePolicySuite.buildXAttr(policyId, groupName);
+    List<XAttr> newXAttrs = FSDirXAttrOp.setINodeXAttrs(fsd, existingXAttrs, xAttrs,
+        EnumSet.of(XAttrSetFlag.CREATE, XAttrSetFlag.REPLACE));
     XAttrStorage.updateINodeXAttrs(inode, newXAttrs, latestSnapshotId);
   }
 

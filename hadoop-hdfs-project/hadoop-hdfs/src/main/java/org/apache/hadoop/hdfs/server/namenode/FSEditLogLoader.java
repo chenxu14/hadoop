@@ -916,7 +916,8 @@ public class FSEditLogLoader {
       final INodesInPath iip = fsDir.getINodesInPath4Write(path);
       FSDirAttrOp.unprotectedSetStoragePolicy(
           fsDir, fsNamesys.getBlockManager(), iip,
-          setStoragePolicyOp.policyId);
+          setStoragePolicyOp.policyId,
+          setStoragePolicyOp.group);
       break;
     }
     default:

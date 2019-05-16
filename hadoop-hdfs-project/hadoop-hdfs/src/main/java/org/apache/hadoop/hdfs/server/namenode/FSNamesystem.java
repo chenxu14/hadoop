@@ -211,6 +211,7 @@ import org.apache.hadoop.hdfs.server.blockmanagement.BlockIdManager;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguous;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguousUnderConstruction;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockManager;
+import org.apache.hadoop.hdfs.server.blockmanagement.BlockStoragePolicySuite;
 import org.apache.hadoop.hdfs.server.blockmanagement.DatanodeDescriptor;
 import org.apache.hadoop.hdfs.server.blockmanagement.DatanodeManager;
 import org.apache.hadoop.hdfs.server.blockmanagement.DatanodeStatistics;
@@ -2208,6 +2209,17 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
    * @param policyName storage policy name
    */
   void setStoragePolicy(String src, String policyName) throws IOException {
+    String groupName = BlockStoragePolicySuite.GROUP_UNSPECIFIED;
+    policyName = (policyName == null) ? null : StringUtils.toUpperCase(policyName);
+    if (policyName != null && policyName.indexOf("/") != -1){
+      String[] names = policyName.split("/");
+      policyName = names[0];
+      groupName = names[1];
+    }
+    setStoragePolicy(src, policyName, groupName);
+  }
+
+  void setStoragePolicy(String src, String policyName, String groupName) throws IOException {
     HdfsFileStatus auditStat;
     waitForLoadingFSImage();
     checkOperation(OperationCategory.WRITE);
@@ -2216,7 +2228,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
       checkOperation(OperationCategory.WRITE);
       checkNameNodeSafeMode("Cannot set storage policy for " + src);
       auditStat = FSDirAttrOp.setStoragePolicy(
-          dir, blockManager, src, policyName);
+          dir, blockManager, src, policyName, groupName);
     } catch (AccessControlException e) {
       logAuditEvent(false, "setStoragePolicy", src);
       throw e;
@@ -3058,6 +3070,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
     final long blockSize;
     final int replication;
     final byte storagePolicyID;
+    final String storageGroup;
     Node clientNode = null;
     String clientMachine = null;
 
@@ -3098,6 +3111,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
           clientMachine);
       replication = pendingFile.getFileReplication();
       storagePolicyID = pendingFile.getStoragePolicyID();
+      storageGroup = pendingFile.getStorageGroup();
     } finally {
       readUnlock();
     }
@@ -3109,7 +3123,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
     // choose targets for the new block to be allocated.
     return getBlockManager().chooseTarget4NewBlock( 
         src, replication, clientNode, excludedNodes, blockSize, favoredNodes,
-        storagePolicyID);
+        storagePolicyID, storageGroup);
   }
 
   /**
@@ -3323,6 +3337,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
     String clientMachine;
     final long preferredblocksize;
     final byte storagePolicyID;
+    final String storageGroup;
     final List<DatanodeStorageInfo> chosen;
     checkOperation(OperationCategory.READ);
     byte[][] pathComponents = FSDirectory.getPathComponentsForReservedPath(src);
@@ -3350,6 +3365,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
       clientnode = blockManager.getDatanodeManager().getDatanodeByHost(clientMachine);
       preferredblocksize = file.getPreferredBlockSize();
       storagePolicyID = file.getStoragePolicyID();
+      storageGroup = file.getStorageGroup();
 
       //find datanode storages
       final DatanodeManager dm = blockManager.getDatanodeManager();
@@ -3365,7 +3381,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
     // choose new datanodes.
     final DatanodeStorageInfo[] targets = blockManager.chooseTarget4AdditionalDatanode(
         src, numAdditionalNodes, clientnode, chosen, 
-        excludes, preferredblocksize, storagePolicyID);
+        excludes, preferredblocksize, storagePolicyID, storageGroup);
     final LocatedBlock lb = new LocatedBlock(blk, targets);
     blockManager.setBlockToken(lb, AccessMode.COPY);
     return lb;
@@ -5728,6 +5744,12 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
   @Metric
   public long getBlocksTotal() {
     return blockManager.getTotalBlocks();
+  }
+
+  @Override // FSNamesystemMBean
+  @Metric
+  public long getBlocksNoGroupLocal() {
+    return blockManager.getBlocksNoGroupLocal();
   }
 
   /**

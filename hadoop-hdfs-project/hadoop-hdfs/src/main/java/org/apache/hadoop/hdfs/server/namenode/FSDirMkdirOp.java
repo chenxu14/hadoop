@@ -17,27 +17,33 @@
  */
 package org.apache.hadoop.hdfs.server.namenode;
 
-import com.google.common.base.Preconditions;
-import org.apache.commons.io.Charsets;
-import org.apache.hadoop.fs.FileAlreadyExistsException;
-import org.apache.hadoop.fs.InvalidPathException;
-import org.apache.hadoop.fs.UnresolvedLinkException;
-import org.apache.hadoop.fs.permission.AclEntry;
-import org.apache.hadoop.fs.permission.FsAction;
-import org.apache.hadoop.fs.permission.FsPermission;
-import org.apache.hadoop.fs.permission.PermissionStatus;
-import org.apache.hadoop.hdfs.DFSUtil;
-import org.apache.hadoop.hdfs.protocol.AclException;
-import org.apache.hadoop.hdfs.protocol.HdfsFileStatus;
-import org.apache.hadoop.hdfs.protocol.QuotaExceededException;
-import org.apache.hadoop.hdfs.server.namenode.snapshot.Snapshot;
+import static org.apache.hadoop.util.Time.now;
 
 import java.io.IOException;
 import java.util.AbstractMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.apache.hadoop.util.Time.now;
+import org.apache.commons.io.Charsets;
+import org.apache.hadoop.fs.FileAlreadyExistsException;
+import org.apache.hadoop.fs.InvalidPathException;
+import org.apache.hadoop.fs.UnresolvedLinkException;
+import org.apache.hadoop.fs.XAttr;
+import org.apache.hadoop.fs.XAttrCodec;
+import org.apache.hadoop.fs.permission.AclEntry;
+import org.apache.hadoop.fs.permission.FsAction;
+import org.apache.hadoop.fs.permission.FsPermission;
+import org.apache.hadoop.fs.permission.PermissionStatus;
+import org.apache.hadoop.hdfs.DFSUtil;
+import org.apache.hadoop.hdfs.XAttrHelper;
+import org.apache.hadoop.hdfs.protocol.AclException;
+import org.apache.hadoop.hdfs.protocol.HdfsConstants;
+import org.apache.hadoop.hdfs.protocol.HdfsFileStatus;
+import org.apache.hadoop.hdfs.protocol.QuotaExceededException;
+import org.apache.hadoop.hdfs.server.blockmanagement.BlockStoragePolicySuite;
+import org.apache.hadoop.hdfs.server.namenode.snapshot.Snapshot;
+
+import com.google.common.base.Preconditions;
 
 class FSDirMkdirOp {
 
@@ -203,6 +209,27 @@ class FSDirMkdirOp {
     fsd.getEditLog().logMkDir(cur, newNode);
     if (NameNode.stateChangeLog.isDebugEnabled()) {
       NameNode.stateChangeLog.debug("mkdirs: created directory " + cur);
+    }
+    if (cur.startsWith("/tmp")) { // currently only tmp dir
+      try {
+        List<XAttr> xAttrs = XAttrHelper.buildXAttrAsList(BlockStoragePolicySuite.buildGroupName());
+        List<XAttr> result = fsd.getFSNamesystem().getXAttrs(existing.getParentPath(), xAttrs);
+        byte[] groupAttr = XAttrHelper.getFirstXAttrValue(result);
+        if (groupAttr != null) {
+          String groupName = XAttrCodec.encodeValue(groupAttr, XAttrCodec.TEXT);
+          groupName = groupName.replaceAll("\"", "");
+          if(!"".equals(groupName.trim())) {
+            fsd.getFSNamesystem().setStoragePolicy(cur, HdfsConstants.HOT_STORAGE_POLICY_NAME, groupName);
+            if (NameNode.stateChangeLog.isDebugEnabled()) {
+              NameNode.stateChangeLog.debug("setXAttr: group name on " + cur + " is " + groupName);
+            }
+          }
+        }
+      } catch (Exception e) {
+        if (NameNode.LOG.isDebugEnabled()) {
+          NameNode.LOG.info("failed to set xattr on " + cur, e);
+        }
+      }
     }
     return existing;
   }

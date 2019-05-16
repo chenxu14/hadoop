@@ -65,6 +65,11 @@ public interface BlockCollection {
    */
   public byte getStoragePolicyID();
 
+  /** 
+   * @return the storage group.
+   */
+  public String getStorageGroup();
+
   /**
    * Get the name of the collection.
    */

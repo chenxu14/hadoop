@@ -292,6 +292,11 @@ public abstract class INodeReference extends INode {
   }
 
   @Override
+  public final String getStorageGroup() {
+    return referred.getStorageGroup();
+  }
+
+  @Override
   public final byte getLocalStoragePolicyID() {
     return referred.getLocalStoragePolicyID();
   }

@@ -123,10 +123,11 @@ public class TestDeleteRace {
                                       boolean returnChosenNodes,
                                       Set<Node> excludedNodes,
                                       long blocksize,
-                                      final BlockStoragePolicy storagePolicy) {
+                                      final BlockStoragePolicy storagePolicy,
+                                      String storageGroup) {
       DatanodeStorageInfo[] results = super.chooseTarget(srcPath,
           numOfReplicas, writer, chosenNodes, returnChosenNodes, excludedNodes,
-          blocksize, storagePolicy);
+          blocksize, storagePolicy, storageGroup);
       try {
         Thread.sleep(3000);
       } catch (InterruptedException e) {}

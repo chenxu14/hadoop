@@ -75,7 +75,8 @@ public abstract class BlockPlacementPolicy {
                                              boolean returnChosenNodes,
                                              Set<Node> excludedNodes,
                                              long blocksize,
-                                             BlockStoragePolicy storagePolicy);
+                                             BlockStoragePolicy storagePolicy,
+                                             String storageGroup);
   
   /**
    * Same as {@link #chooseTarget(String, int, Node, Set, long, List, StorageType)}
@@ -89,14 +90,14 @@ public abstract class BlockPlacementPolicy {
       Set<Node> excludedNodes,
       long blocksize,
       List<DatanodeDescriptor> favoredNodes,
-      BlockStoragePolicy storagePolicy) {
+      BlockStoragePolicy storagePolicy, String storageGroup) {
     // This class does not provide the functionality of placing
     // a block in favored datanodes. The implementations of this class
     // are expected to provide this functionality
 
     return chooseTarget(src, numOfReplicas, writer, 
         new ArrayList<DatanodeStorageInfo>(numOfReplicas), false,
-        excludedNodes, blocksize, storagePolicy);
+        excludedNodes, blocksize, storagePolicy, storageGroup);
   }
 
   /**
@@ -209,7 +210,11 @@ public abstract class BlockPlacementPolicy {
   protected String getRack(final DatanodeInfo datanode) {
     return datanode.getNetworkLocation();
   }
-  
+
+  protected int getBlocksNoGroupLocal(){
+    return 0;
+  }
+
   /**
    * Split data nodes into two sets, one set includes nodes on rack with
    * more than one  replica, the other set contains the remaining nodes.

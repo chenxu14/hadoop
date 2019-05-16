@@ -52,6 +52,12 @@ public interface FSNamesystemMBean {
   public long getBlocksTotal();
 
   /**
+   * Number of allocated blocks in the system not group local
+   * @return -  number of allocated blocks
+   */
+  public long getBlocksNoGroupLocal();
+
+  /**
    * Total storage capacity
    * @return -  total capacity in bytes
    */
