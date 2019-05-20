@@ -951,7 +951,6 @@ public class DatanodeManager {
             removeDatanode(nodeS);
             wipeDatanode(nodeS);
             countSoftwareVersions();
-            dnsToSwitchMapping.reloadCachedMappings();
           }
         }
         return;
@@ -1015,6 +1014,7 @@ public class DatanodeManager {
     try {
       refreshDatanodes();
       countSoftwareVersions();
+      dnsToSwitchMapping.reloadCachedMappings();
     } finally {
       namesystem.writeUnlock();
     }
