@@ -297,12 +297,12 @@ public class DataChecksum implements Checksum {
           fileName, basePos);
       return;
     }
-    if (NativeCrc32.isAvailable()) {
+    if (NativeCrc32.isAvailable() && data.isDirect()) {
       NativeCrc32.verifyChunkedSums(bytesPerChecksum, type.id, checksums, data,
           fileName, basePos);
       return;
     }
-    
+
     int startDataPos = data.position();
     data.mark();
     checksums.mark();
