@@ -56,8 +56,23 @@
 
 // Bit fields for hdfsFile_internal flags
 #define HDFS_FILE_SUPPORTS_DIRECT_READ (1<<0)
+#define HDFS_FILE_SUPPORTS_DIRECT_PREAD (1<<1)
 
+/**
+ * Reads bytes using the read(ByteBuffer) API. By using Java
+ * DirectByteBuffers we can avoid copying the bytes onto the Java heap.
+ * Instead the data will be directly copied from kernel space to the C heap.
+ */
 tSize readDirect(hdfsFS fs, hdfsFile f, void* buffer, tSize length);
+
+/**
+ * Reads bytes using the read(long, ByteBuffer) API. By using Java
+ * DirectByteBuffers we can avoid copying the bytes onto the Java heap.
+ * Instead the data will be directly copied from kernel space to the C heap.
+ */
+tSize preadDirect(hdfsFS fs, hdfsFile file, tOffset position, void* buffer,
+                  tSize length);
+
 static void hdfsFreeFileInfoEntry(hdfsFileInfo *hdfsFileInfo);
 
 /**
@@ -227,12 +242,22 @@ int hdfsFileIsOpenForWrite(hdfsFile file)
 
 int hdfsFileUsesDirectRead(hdfsFile file)
 {
-    return !!(file->flags & HDFS_FILE_SUPPORTS_DIRECT_READ);
+    return (file->flags & HDFS_FILE_SUPPORTS_DIRECT_READ) != 0;
 }
 
 void hdfsFileDisableDirectRead(hdfsFile file)
 {
     file->flags &= ~HDFS_FILE_SUPPORTS_DIRECT_READ;
+}
+
+int hdfsFileUsesDirectPread(hdfsFile file)
+{
+    return (file->flags & HDFS_FILE_SUPPORTS_DIRECT_PREAD) != 0;
+}
+
+void hdfsFileDisableDirectPread(hdfsFile file)
+{
+    file->flags &= ~HDFS_FILE_SUPPORTS_DIRECT_PREAD;
 }
 
 int hdfsDisableDomainSocketSecurity(void)
@@ -1215,6 +1240,13 @@ static int readPrepare(JNIEnv* env, hdfsFS fs, hdfsFile f,
     return 0;
 }
 
+/**
+ * If the underlying stream supports the ByteBufferReadable interface then
+ * this method will transparently use read(ByteBuffer). This can help
+ * improve performance as it avoids unnecessarily copying data on to the Java
+ * heap. Instead the data will be directly copied from kernel space to the C
+ * heap.
+ */
 tSize hdfsRead(hdfsFS fs, hdfsFile f, void* buffer, tSize length)
 {
     jobject jInputStream;
@@ -1285,12 +1317,11 @@ tSize hdfsRead(hdfsFS fs, hdfsFile f, void* buffer, tSize length)
     return jVal.i;
 }
 
-// Reads using the read(ByteBuffer) API, which does fewer copies
 tSize readDirect(hdfsFS fs, hdfsFile f, void* buffer, tSize length)
 {
     // JAVA EQUIVALENT:
-    //  ByteBuffer bbuffer = ByteBuffer.allocateDirect(length) // wraps C buffer
-    //  fis.read(bbuffer);
+    // ByteBuffer buf = ByteBuffer.allocateDirect(length) // wraps C buffer
+    // fis.read(buf);
 
     jobject jInputStream;
     jvalue jVal;
@@ -1324,9 +1355,25 @@ tSize readDirect(hdfsFS fs, hdfsFile f, void* buffer, tSize length)
             "readDirect: FSDataInputStream#read");
         return -1;
     }
-    return (jVal.i < 0) ? 0 : jVal.i;
+    // Reached EOF, return 0
+    if (jVal.i < 0) {
+        return 0;
+    }
+    // 0 bytes read, return error
+    if (jVal.i == 0) {
+        errno = EINTR;
+        return -1;
+    }
+    return jVal.i;
 }
 
+/**
+ * If the underlying stream supports the ByteBufferPositionedReadable
+ * interface then this method will transparently use read(long, ByteBuffer).
+ * This can help improve performance as it avoids unnecessarily copying data
+ * on to the Java heap. Instead the data will be directly copied from kernel
+ * space to the C heap.
+ */
 tSize hdfsPread(hdfsFS fs, hdfsFile f, tOffset position,
                 void* buffer, tSize length)
 {
@@ -1346,6 +1393,9 @@ tSize hdfsPread(hdfsFS fs, hdfsFile f, tOffset position,
         return -1;
     }
 
+    if (f->flags & HDFS_FILE_SUPPORTS_DIRECT_PREAD) {
+      return preadDirect(fs, f, position, buffer, length);
+    }
     env = getJNIEnv();
     if (env == NULL) {
       errno = EINTERNAL;
@@ -1390,6 +1440,60 @@ tSize hdfsPread(hdfsFS fs, hdfsFile f, tOffset position,
     if ((*env)->ExceptionCheck(env)) {
         errno = printPendingExceptionAndFree(env, PRINT_EXC_ALL,
             "hdfsPread: GetByteArrayRegion");
+        return -1;
+    }
+    return jVal.i;
+}
+
+tSize preadDirect(hdfsFS fs, hdfsFile f, tOffset position, void* buffer,
+                  tSize length)
+{
+    // JAVA EQUIVALENT:
+    //  ByteBuffer buf = ByteBuffer.allocateDirect(length) // wraps C buffer
+    //  fis.read(position, buf);
+
+    jvalue jVal;
+    jthrowable jthr;
+    jobject bb;
+
+    //Get the JNIEnv* corresponding to current thread
+    JNIEnv* env = getJNIEnv();
+    if (env == NULL) {
+      errno = EINTERNAL;
+      return -1;
+    }
+
+    //Error checking... make sure that this file is 'readable'
+    if (f->type != HDFS_STREAM_INPUT) {
+        fprintf(stderr, "Cannot read from a non-InputStream object!\n");
+        errno = EINVAL;
+        return -1;
+    }
+
+    //Read the requisite bytes
+    bb = (*env)->NewDirectByteBuffer(env, buffer, length);
+    if (bb == NULL) {
+        errno = printPendingExceptionAndFree(env, PRINT_EXC_ALL,
+            "readDirect: NewDirectByteBuffer");
+        return -1;
+    }
+
+    jthr = invokeMethod(env, &jVal, INSTANCE, f->file,
+            JC_FS_DATA_INPUT_STREAM, "read", "(JLjava/nio/ByteBuffer;)I",
+            position, bb);
+    destroyLocalReference(env, bb);
+    if (jthr) {
+       errno = printExceptionAndFree(env, jthr, PRINT_EXC_ALL,
+           "preadDirect: FSDataInputStream#read");
+       return -1;
+    }
+    // Reached EOF, return 0
+    if (jVal.i < 0) {
+        return 0;
+    }
+    // 0 bytes read, return error
+    if (jVal.i == 0) {
+        errno = EINTR;
         return -1;
     }
     return jVal.i;
