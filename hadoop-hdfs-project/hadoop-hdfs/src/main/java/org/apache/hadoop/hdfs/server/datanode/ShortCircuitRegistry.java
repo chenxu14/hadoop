@@ -385,6 +385,11 @@ public class ShortCircuitRegistry {
     IOUtils.closeQuietly(watcher);
   }
 
+  @VisibleForTesting
+  public int getShmNum() {
+    return segments.size();
+  }
+
   public static interface Visitor {
     void accept(HashMap<ShmId, RegisteredShm> segments,
                 HashMultimap<ExtendedBlockId, Slot> slots);

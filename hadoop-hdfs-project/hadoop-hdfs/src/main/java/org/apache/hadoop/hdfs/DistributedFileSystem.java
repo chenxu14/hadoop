@@ -109,7 +109,7 @@ public class DistributedFileSystem extends FileSystem {
   private String homeDirPrefix =
       DFSConfigKeys.DFS_USER_HOME_DIR_PREFIX_DEFAULT;
 
-  DFSClient dfs;
+  public DFSClient dfs;
   private boolean verifyChecksum = true;
   
   static{
