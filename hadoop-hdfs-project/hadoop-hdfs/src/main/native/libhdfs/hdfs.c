@@ -1479,7 +1479,7 @@ tSize preadDirect(hdfsFS fs, hdfsFile f, tOffset position, void* buffer,
     }
 
     jthr = invokeMethod(env, &jVal, INSTANCE, f->file,
-            JC_FS_DATA_INPUT_STREAM, "read", "(JLjava/nio/ByteBuffer;)I",
+            HADOOP_ISTRM, "read", "(JLjava/nio/ByteBuffer;)I",
             position, bb);
     destroyLocalReference(env, bb);
     if (jthr) {

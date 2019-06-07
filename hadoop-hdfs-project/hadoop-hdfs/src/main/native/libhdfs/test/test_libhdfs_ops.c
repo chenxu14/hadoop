@@ -218,13 +218,13 @@ int main(int argc, char **argv) {
 
         if (hdfsFileUsesDirectRead(readFile)) {
             fprintf(stderr, "Disabled direct reads, but it is still enabled");
-            shutdown_and_exit(cl, -1);
+            exit(-1);
         }
 
         if (!hdfsFileUsesDirectPread(readFile)) {
             fprintf(stderr, "Disabled direct reads, but direct preads was "
                             "disabled as well");
-            shutdown_and_exit(cl, -1);
+            exit(-1);
         }
 
         num_read_bytes = hdfsRead(fs, readFile, (void*)buffer,
@@ -232,7 +232,7 @@ int main(int argc, char **argv) {
         if (strncmp(fileContents, buffer, strlen(fileContents)) != 0) {
             fprintf(stderr, "Failed to read. Expected %s but got %s (%d bytes)\n",
                     fileContents, buffer, num_read_bytes);
-            shutdown_and_exit(cl, -1);
+            exit(-1);
         }
         fprintf(stderr, "Read following %d bytes:\n%s\n",
                 num_read_bytes, buffer);
@@ -270,20 +270,20 @@ int main(int argc, char **argv) {
 
         if (exists) {
             fprintf(stderr, "Failed to validate existence of %s\n", readPath);
-            shutdown_and_exit(cl, -1);
+            exit(-1);
         }
 
         preadFile = hdfsOpenFile(fs, readPath, O_RDONLY, 0, 0, 0);
         if (!preadFile) {
             fprintf(stderr, "Failed to open %s for reading!\n", readPath);
-            shutdown_and_exit(cl, -1);
+            exit(-1);
         }
 
         if (!hdfsFileIsOpenForRead(preadFile)) {
             fprintf(stderr, "hdfsFileIsOpenForRead: we just opened a file "
                             "with O_RDONLY, and it did not show up as 'open for "
                             "read'\n");
-            shutdown_and_exit(cl, -1);
+            exit(-1);
         }
 
         fprintf(stderr, "hdfsAvailable: %d\n", hdfsAvailable(fs, preadFile));
@@ -292,14 +292,14 @@ int main(int argc, char **argv) {
         if (strncmp(fileContents, buffer, strlen(fileContents)) != 0) {
             fprintf(stderr, "Failed to pread (direct). Expected %s but got %s (%d bytes)\n",
                     fileContents, buffer, num_read_bytes);
-            shutdown_and_exit(cl, -1);
+            exit(-1);
         }
         fprintf(stderr, "Pread (direct) following %d bytes:\n%s\n",
                 num_pread_bytes, buffer);
         memset(buffer, 0, strlen(fileContents + 1));
         if (hdfsTell(fs, preadFile) != 0) {
             fprintf(stderr, "Pread changed position of file\n");
-            shutdown_and_exit(cl, -1);
+            exit(-1);
         }
 
         // Test pread midway through the file rather than at the beginning
@@ -308,13 +308,13 @@ int main(int argc, char **argv) {
         if (strncmp(fileContentsChunk, buffer, strlen(fileContentsChunk)) != 0) {
             fprintf(stderr, "Failed to pread (direct). Expected %s but got %s (%d bytes)\n",
                     fileContentsChunk, buffer, num_read_bytes);
-            shutdown_and_exit(cl, -1);
+            exit(-1);
         }
         fprintf(stderr, "Pread (direct) following %d bytes:\n%s\n", num_pread_bytes, buffer);
         memset(buffer, 0, strlen(fileContents + 1));
         if (hdfsTell(fs, preadFile) != 0) {
             fprintf(stderr, "Pread changed position of file\n");
-            shutdown_and_exit(cl, -1);
+            exit(-1);
         }
 
         // Disable the direct pread path so that we really go through the slow
@@ -323,39 +323,39 @@ int main(int argc, char **argv) {
 
         if (hdfsFileUsesDirectPread(preadFile)) {
             fprintf(stderr, "Disabled direct preads, but it is still enabled");
-            shutdown_and_exit(cl, -1);
+            exit(-1);
         }
 
         if (!hdfsFileUsesDirectRead(preadFile)) {
             fprintf(stderr, "Disabled direct preads, but direct read was "
                             "disabled as well");
-            shutdown_and_exit(cl, -1);
+            exit(-1);
         }
 
         num_pread_bytes = hdfsPread(fs, preadFile, 0, (void*)buffer, sizeof(buffer));
         if (strncmp(fileContents, buffer, strlen(fileContents)) != 0) {
             fprintf(stderr, "Failed to pread. Expected %s but got %s (%d bytes)\n",
                     fileContents, buffer, num_pread_bytes);
-            shutdown_and_exit(cl, -1);
+            exit(-1);
         }
         fprintf(stderr, "Pread following %d bytes:\n%s\n", num_pread_bytes, buffer);
         memset(buffer, 0, strlen(fileContents + 1));
         if (hdfsTell(fs, preadFile) != 0) {
             fprintf(stderr, "Pread changed position of file\n");
-            shutdown_and_exit(cl, -1);
+            exit(-1);
         }
 
         num_pread_bytes = hdfsPread(fs, preadFile, 7, (void*)buffer, sizeof(buffer));
         if (strncmp(fileContentsChunk, buffer, strlen(fileContentsChunk)) != 0) {
             fprintf(stderr, "Failed to pread (direct). Expected %s but got %s (%d bytes)\n",
                     fileContentsChunk, buffer, num_read_bytes);
-            shutdown_and_exit(cl, -1);
+            exit(-1);
         }
         fprintf(stderr, "Pread (direct) following %d bytes:\n%s\n", num_pread_bytes, buffer);
         memset(buffer, 0, strlen(fileContents + 1));
         if (hdfsTell(fs, preadFile) != 0) {
             fprintf(stderr, "Pread changed position of file\n");
-            shutdown_and_exit(cl, -1);
+            exit(-1);
         }
 
         hdfsCloseFile(fs, preadFile);
@@ -366,7 +366,7 @@ int main(int argc, char **argv) {
         if (hdfsFileUsesDirectPread(localFile)) {
             fprintf(stderr, "Direct pread support incorrectly detected for local "
                             "filesystem\n");
-            shutdown_and_exit(cl, -1);
+            exit(-1);
         }
 
         hdfsCloseFile(lfs, localFile);
