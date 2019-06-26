@@ -29,12 +29,14 @@ import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.util.MachineList;
+import org.apache.hadoop.util.StringUtils;
 
 import com.google.common.annotations.VisibleForTesting;
 
 @InterfaceStability.Unstable
 @InterfaceAudience.Public
 public class DefaultImpersonationProvider implements ImpersonationProvider {
+  private static final String CONF_EXCLUDE_USERS = ".exclude.users";
   private static final String CONF_HOSTS = ".hosts";
   private static final String CONF_USERS = ".users";
   private static final String CONF_GROUPS = ".groups";
@@ -43,6 +45,8 @@ public class DefaultImpersonationProvider implements ImpersonationProvider {
     new HashMap<String, AccessControlList>();
   private Map<String, MachineList> proxyHosts =
     new HashMap<String, MachineList>();
+  private Map<String, Collection<String>> proxyExcludeUsers =
+    new HashMap<String, Collection<String>>();
   private Configuration conf;
 
 
@@ -70,17 +74,25 @@ public class DefaultImpersonationProvider implements ImpersonationProvider {
         (configurationPrefix.endsWith(".") ? "" : ".");
     
     // constructing regex to match the following patterns:
+    //   $configPrefix.[ANY].exclude.users
     //   $configPrefix.[ANY].users
     //   $configPrefix.[ANY].groups
     //   $configPrefix.[ANY].hosts
-    //
     String prefixRegEx = configPrefix.replace(".", "\\.");
+    String excludeUsersRegEx = prefixRegEx + "[^.]*" + Pattern.quote(CONF_EXCLUDE_USERS);
     String usersGroupsRegEx = prefixRegEx + "[^.]*(" +
         Pattern.quote(CONF_USERS) + "|" + Pattern.quote(CONF_GROUPS) + ")";
     String hostsRegEx = prefixRegEx + "[^.]*" + Pattern.quote(CONF_HOSTS);
 
-  // get list of users and groups per proxyuser
-    Map<String,String> allMatchKeys = 
+    // get exclude users per proxyuser
+    Map<String,String> allMatchKeys = conf.getValByRegex(excludeUsersRegEx);
+    for(Entry<String, String> entry : allMatchKeys.entrySet()) {
+      proxyExcludeUsers.put(entry.getKey(),
+          StringUtils.getTrimmedStringCollection(entry.getValue()));
+    }
+
+    // get list of users and groups per proxyuser
+    allMatchKeys =
         conf.getValByRegex(usersGroupsRegEx);
     for(Entry<String, String> entry : allMatchKeys.entrySet()) {  
       String aclKey = getAclKey(entry.getKey());
@@ -112,7 +124,14 @@ public class DefaultImpersonationProvider implements ImpersonationProvider {
     if (realUser == null) {
       return;
     }
-    
+
+    Collection<String> excludeUsers = proxyExcludeUsers.get(
+        getProxySuperuserExcludeUserConfKey(realUser.getShortUserName()));
+    if (excludeUsers != null && excludeUsers.contains(user.getShortUserName())) {
+      throw new AuthorizationException("User: " + realUser.getUserName()
+          + " is not allowed to impersonate " + user.getUserName());
+    }
+
     AccessControlList acl = proxyUserAcl.get(configPrefix +
         realUser.getShortUserName());
     if (acl == null || !acl.isUserAllowed(user)) {
@@ -136,9 +155,19 @@ public class DefaultImpersonationProvider implements ImpersonationProvider {
     }
     return key;
   }
-  
+
   /**
-   * Returns configuration key for effective usergroups allowed for a superuser
+   * Returns configuration key for effective users not allowed for a superuser
+   *
+   * @param userName name of the superuser
+   * @return configuration key for exclude superuser usergroups
+   */
+  public String getProxySuperuserExcludeUserConfKey(String userName) {
+    return configPrefix + userName + CONF_EXCLUDE_USERS;
+  }
+
+  /**
+   * Returns configuration key for effective users allowed for a superuser
    * 
    * @param userName name of the superuser
    * @return configuration key for superuser usergroups
