@@ -428,7 +428,7 @@ class DataXceiver extends Receiver implements Runnable {
     // Send the file descriptor for the shared memory segment.
     byte buf[] = new byte[] { (byte)0 };
     FileDescriptor shmFdArray[] =
-        new FileDescriptor[] { shmInfo.stream.getFD() };
+        new FileDescriptor[] { shmInfo.fchan.getFD() };
     sock.sendFileDescriptors(shmFdArray, buf, 0, buf.length);
   }
 

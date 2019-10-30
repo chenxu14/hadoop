@@ -41,6 +41,7 @@ import org.apache.hadoop.hdfs.shortcircuit.ShortCircuitShm;
 import org.apache.hadoop.hdfs.shortcircuit.ShortCircuitShm.ShmId;
 import org.apache.hadoop.io.IOUtils;
 import org.apache.hadoop.net.unix.DomainSocket;
+import org.apache.hadoop.net.unix.PassedFileChannel;
 import org.apache.hadoop.net.unix.TemporarySocketDirectory;
 import org.apache.hadoop.util.Time;
 import org.junit.AfterClass;
@@ -116,7 +117,7 @@ public class TestBlockReaderLocal {
       // default: no-op
     }
   }
-  
+
   public void runBlockReaderLocalTest(BlockReaderLocalTest test,
       boolean checksum, long readahead) throws IOException {
     Assume.assumeThat(DomainSocket.getLoadingFailureReason(), equalTo(null));
@@ -129,13 +130,13 @@ public class TestBlockReaderLocal {
     conf.set(DFSConfigKeys.DFS_CHECKSUM_TYPE_KEY, "CRC32C");
     conf.setLong(DFSConfigKeys.DFS_CLIENT_CACHE_READAHEAD, readahead);
     test.setConfiguration(conf);
-    FileInputStream dataIn = null, metaIn = null;
+    PassedFileChannel dataIn = null, metaIn = null;
     final Path TEST_PATH = new Path("/a");
     final long RANDOM_SEED = 4567L;
     BlockReaderLocal blockReaderLocal = null;
     FSDataInputStream fsIn = null;
     byte original[] = new byte[BlockReaderLocalTest.TEST_LENGTH];
-    
+
     FileSystem fs = null;
     ShortCircuitShm shm = null;
     RandomAccessFile raf = null;
@@ -172,22 +173,23 @@ public class TestBlockReaderLocal {
           new FileInputStream(dataFile),
           new FileInputStream(metaFile)
       };
-      dataIn = streams[0];
-      metaIn = streams[1];
+      dataIn = new PassedFileChannel(streams[0]);
+      metaIn = new PassedFileChannel(streams[1]);
       ExtendedBlockId key = new ExtendedBlockId(block.getBlockId(),
           block.getBlockPoolId());
       raf = new RandomAccessFile(
           new File(sockDir.getDir().getAbsolutePath(),
             UUID.randomUUID().toString()), "rw");
       raf.setLength(8192);
-      FileInputStream shmStream = new FileInputStream(raf.getFD());
-      shm = new ShortCircuitShm(ShmId.createRandom(), shmStream);
-      ShortCircuitReplica replica = 
+      PassedFileChannel shmChan = new PassedFileChannel(
+          raf.getChannel(), raf.getFD());
+      shm = new ShortCircuitShm(ShmId.createRandom(), shmChan);
+      ShortCircuitReplica replica =
           new ShortCircuitReplica(key, dataIn, metaIn, shortCircuitCache,
               Time.now(), shm.allocAndRegisterSlot(
                   ExtendedBlockId.fromExtendedBlock(block)));
       blockReaderLocal = new BlockReaderLocal.Builder(
-              new DFSClient.Conf(conf)).
+          new DFSClient.Conf(conf)).
           setFilename(TEST_PATH.getName()).
           setBlock(block).
           setShortCircuitReplica(replica).

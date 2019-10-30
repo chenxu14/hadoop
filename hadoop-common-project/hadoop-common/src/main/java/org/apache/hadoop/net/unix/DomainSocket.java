@@ -18,21 +18,21 @@
 package org.apache.hadoop.net.unix;
 
 import java.io.Closeable;
-import org.apache.hadoop.classification.InterfaceAudience;
 import java.io.FileDescriptor;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.SocketTimeoutException;
+import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.ReadableByteChannel;
-import java.nio.ByteBuffer;
 
 import org.apache.commons.lang.SystemUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.hadoop.util.NativeCodeLoader;
+import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.util.CloseableReferenceCount;
+import org.apache.hadoop.util.NativeCodeLoader;
 
 import com.google.common.annotations.VisibleForTesting;
 
@@ -223,7 +223,7 @@ public class DomainSocket implements Closeable {
    *                                      socket being closed from under us.
    * @throws SocketTimeoutException       If the accept timed out.
    */
-  public DomainSocket accept() throws IOException {
+  public DomainSocket accept() throws IOException, SocketTimeoutException {
     refCount.reference();
     boolean exc = true;
     try {
@@ -460,23 +460,23 @@ public class DomainSocket implements Closeable {
 
   /**
    * Receive some FileDescriptor objects from the process on the other side of
-   * this socket, and wrap them in FileInputStream objects.
+   * this socket, and wrap them in FileChannel objects.
    *
    * See {@link DomainSocket#recvFileInputStreams(ByteBuffer)}
    */
-  public int recvFileInputStreams(FileInputStream[] streams, byte buf[],
+  public int recvFileChannels(PassedFileChannel[] channels, byte[] buf,
         int offset, int length) throws IOException {
-    FileDescriptor descriptors[] = new FileDescriptor[streams.length];
+    FileDescriptor descriptors[] = new FileDescriptor[channels.length];
     boolean success = false;
-    for (int i = 0; i < streams.length; i++) {
-      streams[i] = null;
+    for (int i = 0; i < channels.length; i++) {
+      channels[i] = null;
     }
     refCount.reference();
     try {
       int ret = receiveFileDescriptors0(fd, descriptors, buf, offset, length);
       for (int i = 0, j = 0; i < descriptors.length; i++) {
         if (descriptors[i] != null) {
-          streams[j++] = new FileInputStream(descriptors[i]);
+          channels[j++] = PassedFileChannel.open(descriptors[i], false);
           descriptors[i] = null;
         }
       }
@@ -485,19 +485,20 @@ public class DomainSocket implements Closeable {
     } finally {
       if (!success) {
         for (int i = 0; i < descriptors.length; i++) {
-          if (descriptors[i] != null) {
+          if (channels[i] != null) {
+            try {
+              channels[i].close();
+            } catch (Throwable t) {
+              LOG.warn(t);
+            } finally {
+              channels[i] = null;
+            }
+          } else if (descriptors[i] != null) {
             try {
               closeFileDescriptor0(descriptors[i]);
             } catch (Throwable t) {
               LOG.warn(t);
             }
-          } else if (streams[i] != null) {
-            try {
-              streams[i].close();
-            } catch (Throwable t) {
-              LOG.warn(t);
-            } finally {
-              streams[i] = null; }
           }
         }
       }

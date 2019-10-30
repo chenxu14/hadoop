@@ -458,9 +458,9 @@ public class ShortCircuitCache implements Closeable {
       // that we could put a stale or unusable one into the cache.
       if (!replica.purged) {
         String purgeReason = null;
-        if (!replica.getDataStream().getChannel().isOpen()) {
+        if (!replica.getDataChannel().channel().isOpen()) {
           purgeReason = "purging replica because its data channel is closed.";
-        } else if (!replica.getMetaStream().getChannel().isOpen()) {
+        } else if (!replica.getMetaChannel().channel().isOpen()) {
           purgeReason = "purging replica because its meta channel is closed.";
         } else if (replica.isStale()) {
           purgeReason = "purging replica because it is stale.";

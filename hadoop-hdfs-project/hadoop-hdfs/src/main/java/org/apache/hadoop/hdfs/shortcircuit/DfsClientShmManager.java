@@ -21,7 +21,6 @@ import java.io.BufferedOutputStream;
 import java.io.Closeable;
 import java.io.DataOutputStream;
 import java.io.EOFException;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map.Entry;
@@ -46,6 +45,7 @@ import org.apache.hadoop.hdfs.shortcircuit.ShortCircuitShm.Slot;
 import org.apache.hadoop.io.IOUtils;
 import org.apache.hadoop.net.unix.DomainSocket;
 import org.apache.hadoop.net.unix.DomainSocketWatcher;
+import org.apache.hadoop.net.unix.PassedFileChannel;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
@@ -174,25 +174,25 @@ public class DfsClientShmManager implements Closeable {
       case SUCCESS:
         DomainSocket sock = peer.getDomainSocket();
         byte buf[] = new byte[1];
-        FileInputStream fis[] = new FileInputStream[1];
-        if (sock.recvFileInputStreams(fis, buf, 0, buf.length) < 0) {
+        PassedFileChannel fileChannels[] = new PassedFileChannel[1];
+        if (sock.recvFileChannels(fileChannels, buf, 0, buf.length) < 0) {
           throw new EOFException("got EOF while trying to transfer the " +
               "file descriptor for the shared memory segment.");
         }
-        if (fis[0] == null) {
+        if (fileChannels[0] == null) {
           throw new IOException("the datanode " + datanode + " failed to " +
               "pass a file descriptor for the shared memory segment.");
         }
         try {
           DfsClientShm shm = 
               new DfsClientShm(PBHelper.convert(resp.getId()),
-                  fis[0], this, peer);
+                  fileChannels[0], this, peer);
           if (LOG.isTraceEnabled()) {
             LOG.trace(this + ": createNewShm: created " + shm);
           }
           return shm;
         } finally {
-          IOUtils.cleanup(LOG,  fis[0]);
+          IOUtils.cleanup(LOG, fileChannels[0]);
         }
       case ERROR_UNSUPPORTED:
         // The DataNode just does not support short-circuit shared memory

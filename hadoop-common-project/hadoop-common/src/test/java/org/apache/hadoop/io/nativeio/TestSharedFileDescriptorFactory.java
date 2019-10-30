@@ -18,19 +18,20 @@
 package org.apache.hadoop.io.nativeio;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 
-import org.junit.Assert;
-import org.junit.Assume;
-import org.junit.Before;
-import org.junit.Test;
 import org.apache.commons.lang.SystemUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.fs.FileUtil;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.IOUtils;
+import org.apache.hadoop.net.unix.PassedFileChannel;
+import org.junit.Assert;
+import org.junit.Assume;
+import org.junit.Before;
+import org.junit.Test;
 
 public class TestSharedFileDescriptorFactory {
   static final Log LOG = LogFactory.getLog(TestSharedFileDescriptorFactory.class);
@@ -51,13 +52,14 @@ public class TestSharedFileDescriptorFactory {
     SharedFileDescriptorFactory factory =
         SharedFileDescriptorFactory.create("woot_",
             new String[] { path.getAbsolutePath() });
-    FileInputStream inStream =
+    PassedFileChannel fchan =
         factory.createDescriptor("testReadAndWrite", 4096);
-    FileOutputStream outStream = new FileOutputStream(inStream.getFD());
+    FileOutputStream outStream = new FileOutputStream(fchan.getFD());
     outStream.write(101);
-    inStream.getChannel().position(0);
-    Assert.assertEquals(101, inStream.read());
-    inStream.close();
+    fchan.channel().position(0);
+    byte[] arr = new byte[1];
+    IOUtils.readFully(fchan.channel(), arr, 0, arr.length);
+    Assert.assertEquals(101, arr[0]);
     outStream.close();
     FileUtil.fullyDelete(path);
   }

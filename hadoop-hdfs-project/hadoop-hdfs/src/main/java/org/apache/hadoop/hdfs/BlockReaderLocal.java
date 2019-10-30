@@ -19,7 +19,6 @@ package org.apache.hadoop.hdfs;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.util.EnumSet;
 
 import org.apache.commons.logging.Log;
@@ -32,8 +31,9 @@ import org.apache.hadoop.hdfs.server.datanode.BlockMetadataHeader;
 import org.apache.hadoop.hdfs.server.datanode.CachingStrategy;
 import org.apache.hadoop.hdfs.shortcircuit.ClientMmap;
 import org.apache.hadoop.hdfs.shortcircuit.ShortCircuitReplica;
-import org.apache.hadoop.util.DirectBufferPool;
+import org.apache.hadoop.net.unix.PassedFileChannel;
 import org.apache.hadoop.util.DataChecksum;
+import org.apache.hadoop.util.DirectBufferPool;
 import org.apache.htrace.Sampler;
 import org.apache.htrace.Trace;
 import org.apache.htrace.TraceScope;
@@ -132,7 +132,7 @@ class BlockReaderLocal implements BlockReader {
   /**
    * The data FileChannel.
    */
-  private final FileChannel dataIn;
+  private final PassedFileChannel dataIn;
 
   /**
    * The next place we'll read from in the block data FileChannel.
@@ -145,7 +145,7 @@ class BlockReaderLocal implements BlockReader {
   /**
    * The Checksum FileChannel.
    */
-  private final FileChannel checksumIn;
+  private final PassedFileChannel checksumIn;
   
   /**
    * Checksum type and size.
@@ -226,9 +226,9 @@ class BlockReaderLocal implements BlockReader {
 
   private BlockReaderLocal(Builder builder) {
     this.replica = builder.replica;
-    this.dataIn = replica.getDataStream().getChannel();
+    this.dataIn = replica.getDataChannel();
     this.dataPos = builder.dataPos;
-    this.checksumIn = replica.getMetaStream().getChannel();
+    this.checksumIn = replica.getMetaChannel();
     BlockMetadataHeader header = builder.replica.getMetaHeader();
     this.checksum = header.getChecksum();
     this.verifyChecksum = builder.verifyChecksum &&
@@ -327,7 +327,7 @@ class BlockReaderLocal implements BlockReader {
       long startDataPos = dataPos;
       int startBufPos = buf.position();
       while (buf.hasRemaining()) {
-        int nRead = dataIn.read(buf, dataPos);
+        int nRead = dataIn.channel().read(buf, dataPos);
         if (nRead < 0) {
           break;
         }
@@ -349,7 +349,7 @@ class BlockReaderLocal implements BlockReader {
           long checksumPos = BlockMetadataHeader.getHeaderSize()
               + ((startDataPos / bytesPerChecksum) * checksumSize);
           while (checksumBuf.hasRemaining()) {
-            int nRead = checksumIn.read(checksumBuf, checksumPos);
+            int nRead = checksumIn.channel().read(checksumBuf, checksumPos);
             if (nRead < 0) {
               throw new IOException("Got unexpected checksum file EOF at " +
                   checksumPos + ", block file position " + startDataPos + " for " +
@@ -436,12 +436,12 @@ class BlockReaderLocal implements BlockReader {
     freeChecksumBufIfExists();
     int total = 0;
     while (buf.hasRemaining()) {
-      int nRead = dataIn.read(buf, dataPos);
+      int nRead = dataIn.channel().read(buf, dataPos);
       if (nRead <= 0) break;
       dataPos += nRead;
       total += nRead;
     }
-    return (total == 0 && (dataPos == dataIn.size())) ? -1 : total;
+    return (total == 0 && (dataPos == dataIn.channel().size())) ? -1 : total;
   }
 
   /**
@@ -587,10 +587,10 @@ class BlockReaderLocal implements BlockReader {
         int len) throws IOException {
     freeDataBufIfExists();
     freeChecksumBufIfExists();
-    int nRead = dataIn.read(ByteBuffer.wrap(arr, off, len), dataPos);
+    int nRead = dataIn.channel().read(ByteBuffer.wrap(arr, off, len), dataPos);
     if (nRead > 0) {
       dataPos += nRead;
-    } else if ((nRead == 0) && (dataPos == dataIn.size())) {
+    } else if ((nRead == 0) && (dataPos == dataIn.channel().size())) {
       return -1;
     }
     return nRead;

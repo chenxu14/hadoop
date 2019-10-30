@@ -26,6 +26,7 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
+import org.apache.hadoop.net.unix.PassedFileChannel;
 
 /**
  * A factory for creating shared file descriptors inside a given directory.
@@ -114,20 +115,21 @@ public class SharedFileDescriptorFactory {
   }
 
   /**
-   * Create a shared file descriptor which will be both readable and writable.
+   * Create a shared file descriptor which will be both readable and writable,
+   * then open and return a FileChannel for the descriptor.
    *
    * @param info           Information to include in the path of the 
    *                         generated descriptor.
    * @param length         The starting file length.
    *
-   * @return               The file descriptor, wrapped in a FileInputStream.
+   * @return a FileChannel
    * @throws IOException   If there was an I/O or configuration error creating
    *                         the descriptor.
    */
-  public FileInputStream createDescriptor(String info, int length)
+  public PassedFileChannel createDescriptor(String info, int length)
       throws IOException {
-    return new FileInputStream(
-        createDescriptor0(prefix + info, path, length));
+    FileDescriptor fdesc = createDescriptor0(prefix + info, path, length);
+    return PassedFileChannel.open(fdesc, true);
   }
 
   /**

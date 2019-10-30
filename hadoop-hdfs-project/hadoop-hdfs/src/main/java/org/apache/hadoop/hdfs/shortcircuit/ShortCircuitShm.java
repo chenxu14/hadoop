@@ -17,7 +17,6 @@
  */
 package org.apache.hadoop.hdfs.shortcircuit;
 
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.util.BitSet;
@@ -33,14 +32,14 @@ import org.apache.hadoop.fs.InvalidRequestException;
 import org.apache.hadoop.hdfs.ExtendedBlockId;
 import org.apache.hadoop.io.nativeio.NativeIO;
 import org.apache.hadoop.io.nativeio.NativeIO.POSIX;
+import org.apache.hadoop.net.unix.PassedFileChannel;
 import org.apache.hadoop.util.Shell;
-import org.apache.hadoop.util.StringUtils;
-
-import sun.misc.Unsafe;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ComparisonChain;
 import com.google.common.primitives.Ints;
+
+import sun.misc.Unsafe;
 
 /**
  * A shared memory segment used to implement short-circuit reads.
@@ -67,12 +66,12 @@ public class ShortCircuitShm {
    * Calculate the usable size of a shared memory segment.
    * We round down to a multiple of the slot size and do some validation.
    *
-   * @param stream The stream we're using.
+   * @param fchan  The channel we're using.
    * @return       The usable size of the shared memory segment.
    */
-  private static int getUsableLength(FileInputStream stream)
+  private static int getUsableLength(PassedFileChannel fchan)
       throws IOException {
-    int intSize = Ints.checkedCast(stream.getChannel().size());
+    int intSize = Ints.checkedCast(fchan.channel().size());
     int slots = intSize / BYTES_PER_SLOT;
     if (slots == 0) {
       throw new IOException("size of shared memory segment was " +
@@ -453,7 +452,7 @@ public class ShortCircuitShm {
    * Create the ShortCircuitShm.
    * 
    * @param shmId       The ID to use.
-   * @param stream      The stream that we're going to use to create this 
+   * @param fchan       The channel that we're going to use to create this 
    *                    shared memory segment.
    *                    
    *                    Although this is a FileInputStream, we are going to
@@ -463,7 +462,7 @@ public class ShortCircuitShm {
    *                    any public accessor which returns a FileDescriptor,
    *                    unlike FileInputStream.
    */
-  public ShortCircuitShm(ShmId shmId, FileInputStream stream)
+  public ShortCircuitShm(ShmId shmId, PassedFileChannel fchan)
         throws IOException {
     if (!NativeIO.isAvailable()) {
       throw new UnsupportedOperationException("NativeIO is not available.");
@@ -478,8 +477,8 @@ public class ShortCircuitShm {
           "load misc.Unsafe.");
     }
     this.shmId = shmId;
-    this.mmappedLength = getUsableLength(stream);
-    this.baseAddress = POSIX.mmap(stream.getFD(), 
+    this.mmappedLength = getUsableLength(fchan);
+    this.baseAddress = POSIX.mmap(fchan.getFD(),
         POSIX.MMAP_PROT_READ | POSIX.MMAP_PROT_WRITE, true, mmappedLength);
     this.slots = new Slot[mmappedLength / BYTES_PER_SLOT];
     this.allocatedSlots = new BitSet(slots.length);

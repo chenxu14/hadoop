@@ -22,7 +22,6 @@ import static org.apache.hadoop.hdfs.protocol.proto.DataTransferProtos.ShortCirc
 import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 
@@ -53,6 +52,7 @@ import org.apache.hadoop.hdfs.shortcircuit.ShortCircuitShm.SlotId;
 import org.apache.hadoop.io.IOUtils;
 import org.apache.hadoop.ipc.RemoteException;
 import org.apache.hadoop.net.unix.DomainSocket;
+import org.apache.hadoop.net.unix.PassedFileChannel;
 import org.apache.hadoop.security.AccessControlException;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.security.token.SecretManager.InvalidToken;
@@ -546,8 +546,8 @@ public class BlockReaderFactory implements ShortCircuitReplicaCreator {
     switch (resp.getStatus()) {
     case SUCCESS:
       byte buf[] = new byte[1];
-      FileInputStream fis[] = new FileInputStream[2];
-      sock.recvFileInputStreams(fis, buf, 0, buf.length);
+      PassedFileChannel fchan[] = new PassedFileChannel[2];
+      sock.recvFileChannels(fchan, buf, 0, buf.length);
       ShortCircuitReplica replica = null;
       try {
         ExtendedBlockId key =
@@ -556,8 +556,8 @@ public class BlockReaderFactory implements ShortCircuitReplicaCreator {
           LOG.trace("Sending receipt verification byte for slot " + slot);
           sock.getOutputStream().write(0);
         }
-        replica = new ShortCircuitReplica(key, fis[0], fis[1], cache,
-            Time.monotonicNow(), slot);
+        replica = new ShortCircuitReplica(key, fchan[0],
+            fchan[1], cache, Time.monotonicNow(), slot);
         return new ShortCircuitReplicaInfo(replica);
       } catch (IOException e) {
         // This indicates an error reading from disk, or a format error.  Since
@@ -567,7 +567,7 @@ public class BlockReaderFactory implements ShortCircuitReplicaCreator {
         return null;
       } finally {
         if (replica == null) {
-          IOUtils.cleanup(DFSClient.LOG, fis[0], fis[1]);
+          IOUtils.cleanup(DFSClient.LOG, fchan[0], fchan[1]);
         }
       }
     case ERROR_UNSUPPORTED:

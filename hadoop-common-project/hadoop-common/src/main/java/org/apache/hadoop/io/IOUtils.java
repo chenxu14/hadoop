@@ -22,6 +22,7 @@ import java.io.*;
 import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.WritableByteChannel;
 import java.nio.file.DirectoryStream;
 import java.nio.file.DirectoryIteratorException;
@@ -35,7 +36,6 @@ import org.apache.commons.logging.Log;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.util.ChunkedArrayList;
 
 /**
  * An utility class for I/O related functionality. 
@@ -179,6 +179,28 @@ public class IOUtils {
       throw ie;
     } catch (Throwable t) {
       throw new IOException("Error while reading compressed data", t);
+    }
+  }
+
+  /**
+   * Reads len bytes in a loop.
+   *
+   * @param in ReadableByteChannel to read from
+   * @param buf The buffer to fill
+   * @param off offset from the buffer
+   * @param len the length of bytes to read
+   * @throws IOException if it could not read requested number of bytes
+   * for any reason (including EOF)
+   */
+  public static void readFully(ReadableByteChannel in, byte[] buf,
+                               int off, int len) throws IOException {
+    ByteBuffer bb = ByteBuffer.wrap(buf, off, len);
+    int ret = 0;
+    while (bb.hasRemaining()) {
+      if (ret < 0) {
+        throw new EOFException();
+      }
+      ret = in.read(bb);
     }
   }
 

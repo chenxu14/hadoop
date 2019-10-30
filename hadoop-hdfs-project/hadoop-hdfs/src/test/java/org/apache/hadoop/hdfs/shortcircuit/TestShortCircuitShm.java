@@ -18,7 +18,6 @@
 package org.apache.hadoop.hdfs.shortcircuit;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.util.ArrayList;
 import java.util.Iterator;
 
@@ -26,10 +25,10 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.fs.FileUtil;
 import org.apache.hadoop.hdfs.ExtendedBlockId;
-import org.apache.hadoop.hdfs.shortcircuit.ShortCircuitShm;
 import org.apache.hadoop.hdfs.shortcircuit.ShortCircuitShm.ShmId;
 import org.apache.hadoop.hdfs.shortcircuit.ShortCircuitShm.Slot;
 import org.apache.hadoop.io.nativeio.SharedFileDescriptorFactory;
+import org.apache.hadoop.net.unix.PassedFileChannel;
 import org.junit.Assert;
 import org.junit.Assume;
 import org.junit.Before;
@@ -54,11 +53,11 @@ public class TestShortCircuitShm {
     SharedFileDescriptorFactory factory =
         SharedFileDescriptorFactory.create("shm_",
             new String[] { path.getAbsolutePath() } );
-    FileInputStream stream =
-        factory.createDescriptor("testStartupShutdown", 4096);
-    ShortCircuitShm shm = new ShortCircuitShm(ShmId.createRandom(), stream);
+    PassedFileChannel fchan;
+    fchan = factory.createDescriptor("testStartupShutdown", 4096);
+    ShortCircuitShm shm = new ShortCircuitShm(ShmId.createRandom(), fchan);
     shm.free();
-    stream.close();
+    fchan.close();
     FileUtil.fullyDelete(path);
   }
 
@@ -69,13 +68,14 @@ public class TestShortCircuitShm {
     SharedFileDescriptorFactory factory =
         SharedFileDescriptorFactory.create("shm_", 
             new String[] { path.getAbsolutePath() });
-    FileInputStream stream =
-        factory.createDescriptor("testAllocateSlots", 4096);
-    ShortCircuitShm shm = new ShortCircuitShm(ShmId.createRandom(), stream);
+    PassedFileChannel fchan = null;
+    fchan = factory.createDescriptor("testAllocateSlots", 4096);
+    ShortCircuitShm shm = new ShortCircuitShm(ShmId.createRandom(), fchan);
     int numSlots = 0;
     ArrayList<Slot> slots = new ArrayList<Slot>();
     while (!shm.isFull()) {
-      Slot slot = shm.allocAndRegisterSlot(new ExtendedBlockId(123L, "test_bp1"));
+      Slot slot = shm.allocAndRegisterSlot(
+          new ExtendedBlockId(123L, "test_bp1"));
       slots.add(slot);
       numSlots++;
     }
@@ -103,7 +103,7 @@ public class TestShortCircuitShm {
       slot.makeInvalid();
     }
     shm.free();
-    stream.close();
+    fchan.close();
     FileUtil.fullyDelete(path);
   }
 }

@@ -558,12 +558,12 @@ public class TestDomainSocket {
       fis.close();
     }
 
-    public void checkInputStream(FileInputStream fis) throws IOException {
+    public void checkFileChannel(PassedFileChannel fchan) throws IOException {
       byte buf[] = new byte[contents.length];
-      IOUtils.readFully(fis, buf, 0, buf.length);
+      IOUtils.readFully(fchan.channel(), buf, 0, buf.length);
       Arrays.equals(contents, buf);
     }
-    
+
     protected void finalize() {
       try {
         cleanup();
@@ -604,7 +604,7 @@ public class TestDomainSocket {
           InputStream connInputStream = conn.getInputStream();
           IOUtils.readFully(connInputStream, in1, 0, in1.length);
           Assert.assertTrue(Arrays.equals(clientMsg1, in1));
-          DomainSocket domainConn = (DomainSocket)conn;
+          DomainSocket domainConn = conn;
           domainConn.sendFileDescriptors(passedFds, serverMsg1, 0,
               serverMsg1.length);
           conn.close();
@@ -624,20 +624,19 @@ public class TestDomainSocket {
           OutputStream clientOutputStream = client.getOutputStream();
           InputStream clientInputStream = client.getInputStream();
           clientOutputStream.write(clientMsg1);
-          DomainSocket domainConn = (DomainSocket)client;
+          DomainSocket domainConn = client;
           byte in1[] = new byte[serverMsg1.length];
-          FileInputStream recvFis[] = new FileInputStream[passedFds.length];
-          int r = domainConn.
-              recvFileInputStreams(recvFis, in1, 0, in1.length - 1);
+          PassedFileChannel fchans[] = new PassedFileChannel[passedFds.length];
+          int r = domainConn.recvFileChannels(fchans, in1, 0, in1.length - 1);
           Assert.assertTrue(r > 0);
           IOUtils.readFully(clientInputStream, in1, r, in1.length - r);
           Assert.assertTrue(Arrays.equals(serverMsg1, in1));
           for (int i = 0; i < passedFds.length; i++) {
-            Assert.assertNotNull(recvFis[i]);
-            passedFiles[i].checkInputStream(recvFis[i]);
+            Assert.assertNotNull(fchans[i]);
+            passedFiles[i].checkFileChannel(fchans[i]);
           }
-          for (FileInputStream fis : recvFis) {
-            fis.close();
+          for (PassedFileChannel fchan : fchans) {
+            fchan.close();
           }
           client.close();
         } catch (Throwable e) {

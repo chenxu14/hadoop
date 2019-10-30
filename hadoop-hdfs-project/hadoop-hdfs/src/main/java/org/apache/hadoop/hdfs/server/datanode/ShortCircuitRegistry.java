@@ -23,20 +23,19 @@ import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_SHORT_CIRCUIT_SHARED_MEMO
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_SHORT_CIRCUIT_SHARED_MEMORY_WATCHER_INTERRUPT_CHECK_MS_DEFAULT;
 
 import java.io.Closeable;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
 
-import com.google.common.annotations.VisibleForTesting;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.InvalidRequestException;
 import org.apache.hadoop.hdfs.ExtendedBlockId;
+import org.apache.hadoop.hdfs.shortcircuit.DfsClientShmManager;
 import org.apache.hadoop.hdfs.shortcircuit.ShortCircuitShm;
 import org.apache.hadoop.hdfs.shortcircuit.ShortCircuitShm.ShmId;
 import org.apache.hadoop.hdfs.shortcircuit.ShortCircuitShm.Slot;
@@ -44,7 +43,9 @@ import org.apache.hadoop.hdfs.shortcircuit.ShortCircuitShm.SlotId;
 import org.apache.hadoop.io.nativeio.SharedFileDescriptorFactory;
 import org.apache.hadoop.net.unix.DomainSocket;
 import org.apache.hadoop.net.unix.DomainSocketWatcher;
+import org.apache.hadoop.net.unix.PassedFileChannel;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.HashMultimap;
@@ -89,9 +90,10 @@ public class ShortCircuitRegistry {
     private final String clientName;
     private final ShortCircuitRegistry registry;
 
-    RegisteredShm(String clientName, ShmId shmId, FileInputStream stream,
-        ShortCircuitRegistry registry) throws IOException {
-      super(shmId, stream);
+    RegisteredShm(String clientName, ShmId shmId, PassedFileChannel fchan,
+                  ShortCircuitRegistry registry)
+        throws IOException {
+      super(shmId, fchan);
       this.clientName = clientName;
       this.registry = registry;
     }
@@ -264,16 +266,16 @@ public class ShortCircuitRegistry {
 
   public static class NewShmInfo implements Closeable {
     public final ShmId shmId;
-    public final FileInputStream stream;
+    public final PassedFileChannel fchan;
 
-    NewShmInfo(ShmId shmId, FileInputStream stream) {
+    NewShmInfo(ShmId shmId, PassedFileChannel fchan) {
       this.shmId = shmId;
-      this.stream = stream;
+      this.fchan = fchan;
     }
 
     @Override
     public void close() throws IOException {
-      stream.close();
+      fchan.close();
     }
   }
 
@@ -303,19 +305,19 @@ public class ShortCircuitRegistry {
         }
         throw new UnsupportedOperationException();
       }
-      FileInputStream fis = null;
+      PassedFileChannel fchan = null;
       try {
         do {
           shmId = ShmId.createRandom();
         } while (segments.containsKey(shmId));
-        fis = shmFactory.createDescriptor(clientName, SHM_LENGTH);
-        shm = new RegisteredShm(clientName, shmId, fis, this);
+        fchan = shmFactory.createDescriptor(clientName, SHM_LENGTH);
+        shm = new RegisteredShm(clientName, shmId, fchan, this);
       } finally {
         if (shm == null) {
-          IOUtils.closeQuietly(fis);
+          IOUtils.closeQuietly(fchan);
         }
       }
-      info = new NewShmInfo(shmId, fis);
+      info = new NewShmInfo(shmId, fchan);
       segments.put(shmId, shm);
     }
     // Drop the registry lock to prevent deadlock.

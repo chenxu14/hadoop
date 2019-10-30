@@ -27,7 +27,6 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -35,6 +34,7 @@ import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants;
 import org.apache.hadoop.io.IOUtils;
+import org.apache.hadoop.net.unix.PassedFileChannel;
 import org.apache.hadoop.util.DataChecksum;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -115,13 +115,13 @@ public class BlockMetadataHeader {
    * @return the Metadata Header.
    * @throws IOException on error.
    */
-  public static BlockMetadataHeader preadHeader(FileChannel fc)
+  public static BlockMetadataHeader preadHeader(PassedFileChannel fc)
       throws IOException {
     final byte arr[] = new byte[getHeaderSize()];
     ByteBuffer buf = ByteBuffer.wrap(arr);
 
     while (buf.hasRemaining()) {
-      if (fc.read(buf, 0) <= 0) {
+      if (fc.channel().read(buf, 0) <= 0) {
         throw new EOFException("unexpected EOF while reading " +
             "metadata file header");
       }

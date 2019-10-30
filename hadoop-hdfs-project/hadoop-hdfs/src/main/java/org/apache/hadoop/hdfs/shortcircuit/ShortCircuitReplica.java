@@ -17,10 +17,8 @@
  */
 package org.apache.hadoop.hdfs.shortcircuit;
 
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.MappedByteBuffer;
-import java.nio.channels.FileChannel;
 import java.nio.channels.FileChannel.MapMode;
 
 import org.apache.commons.logging.Log;
@@ -31,6 +29,7 @@ import org.apache.hadoop.hdfs.server.datanode.BlockMetadataHeader;
 import org.apache.hadoop.hdfs.shortcircuit.ShortCircuitShm.Slot;
 import org.apache.hadoop.io.IOUtils;
 import org.apache.hadoop.io.nativeio.NativeIO;
+import org.apache.hadoop.net.unix.PassedFileChannel;
 import org.apache.hadoop.util.Time;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -56,14 +55,14 @@ public class ShortCircuitReplica {
   /**
    * The block data input stream.
    */
-  private final FileInputStream dataStream;
+  private final PassedFileChannel dataChannel;
 
   /**
    * The block metadata input stream.
    *
    * TODO: make this nullable if the file has no checksums on disk.
    */
-  private final FileInputStream metaStream;
+  private final PassedFileChannel metaChannel;
 
   /**
    * Block metadata header.
@@ -118,13 +117,12 @@ public class ShortCircuitReplica {
   private Long evictableTimeNs = null;
 
   public ShortCircuitReplica(ExtendedBlockId key,
-      FileInputStream dataStream, FileInputStream metaStream,
+      PassedFileChannel dataChannel, PassedFileChannel metaChannel,
       ShortCircuitCache cache, long creationTimeMs, Slot slot) throws IOException {
     this.key = key;
-    this.dataStream = dataStream;
-    this.metaStream = metaStream;
-    this.metaHeader =
-          BlockMetadataHeader.preadHeader(metaStream.getChannel());
+    this.dataChannel = dataChannel;
+    this.metaChannel = metaChannel;
+    this.metaHeader = BlockMetadataHeader.preadHeader(metaChannel);
     if (metaHeader.getVersion() != 1) {
       throw new IOException("invalid metadata header version " +
           metaHeader.getVersion() + ".  Can only handle version 1.");
@@ -253,7 +251,7 @@ public class ShortCircuitReplica {
         suffix += "  munmapped.";
       }
     }
-    IOUtils.cleanup(LOG, dataStream, metaStream);
+    IOUtils.cleanup(LOG, dataChannel, metaChannel);
     if (slot != null) {
       cache.scheduleSlotReleaser(slot);
       if (LOG.isTraceEnabled()) {
@@ -265,12 +263,12 @@ public class ShortCircuitReplica {
     }
   }
 
-  public FileInputStream getDataStream() {
-    return dataStream;
+  public PassedFileChannel getDataChannel() {
+    return dataChannel;
   }
 
-  public FileInputStream getMetaStream() {
-    return metaStream;
+  public PassedFileChannel getMetaChannel() {
+    return metaChannel;
   }
 
   public BlockMetadataHeader getMetaHeader() {
@@ -287,11 +285,10 @@ public class ShortCircuitReplica {
 
   MappedByteBuffer loadMmapInternal() {
     try {
-      FileChannel channel = dataStream.getChannel();
-      MappedByteBuffer mmap = channel.map(MapMode.READ_ONLY, 0, 
-          Math.min(Integer.MAX_VALUE, channel.size()));
+      MappedByteBuffer mmap = dataChannel.channel().map(MapMode.READ_ONLY, 0,
+          Math.min(Integer.MAX_VALUE, dataChannel.channel().size()));
       if (LOG.isTraceEnabled()) {
-        LOG.trace(this + ": created mmap of size " + channel.size());
+        LOG.trace(this + ": created mmap of size " + dataChannel.channel().size());
       }
       return mmap;
     } catch (IOException e) {

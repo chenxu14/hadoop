@@ -65,6 +65,7 @@ import org.apache.hadoop.hdfs.shortcircuit.ShortCircuitShm.ShmId;
 import org.apache.hadoop.hdfs.shortcircuit.ShortCircuitShm.Slot;
 import org.apache.hadoop.io.IOUtils;
 import org.apache.hadoop.net.unix.DomainSocket;
+import org.apache.hadoop.net.unix.PassedFileChannel;
 import org.apache.hadoop.net.unix.TemporarySocketDirectory;
 import org.apache.hadoop.security.token.SecretManager.InvalidToken;
 import org.apache.hadoop.test.GenericTestUtils;
@@ -84,12 +85,12 @@ import com.google.common.collect.HashMultimap;
 public class TestShortCircuitCache {
   static final Log LOG = LogFactory.getLog(TestShortCircuitCache.class);
   
-  private static class TestFileDescriptorPair {
+  private static class TestFileChannelPair {
     final TemporarySocketDirectory dir = new TemporarySocketDirectory();
-    final FileInputStream[] fis;
+    final PassedFileChannel[] channels;
 
-    public TestFileDescriptorPair() throws IOException {
-      fis = new FileInputStream[2];
+    public TestFileChannelPair() throws IOException {
+      channels = new PassedFileChannel[2];
       for (int i = 0; i < 2; i++) {
         String name = dir.getDir() + "/file" + i;
         FileOutputStream fos = new FileOutputStream(name);
@@ -106,21 +107,23 @@ public class TestShortCircuitCache {
           dos.close();
         }
         fos.close();
-        fis[i] = new FileInputStream(name);
+        channels[i] = new PassedFileChannel(new FileInputStream(name));
       }
     }
 
-    public FileInputStream[] getFileInputStreams() {
-      return fis;
+    public PassedFileChannel[] getFileChannels() {
+      return channels;
     }
 
     public void close() throws IOException {
-      IOUtils.cleanup(LOG, fis);
+      IOUtils.cleanup(LOG, channels);
       dir.close();
     }
 
-    public boolean compareWith(FileInputStream data, FileInputStream meta) {
-      return ((data == fis[0]) && (meta == fis[1]));
+    public boolean compareWith(PassedFileChannel data,
+                               PassedFileChannel meta) {
+      return ((data.channel() == channels[0].channel()) &&
+          (meta.channel() == channels[1].channel()));
     }
   }
 
@@ -128,10 +131,10 @@ public class TestShortCircuitCache {
       implements ShortCircuitReplicaCreator {
     private final int blockId;
     private final ShortCircuitCache cache;
-    private final TestFileDescriptorPair pair;
+    private final TestFileChannelPair pair;
 
     SimpleReplicaCreator(int blockId, ShortCircuitCache cache,
-        TestFileDescriptorPair pair) {
+        TestFileChannelPair pair) {
       this.blockId = blockId;
       this.cache = cache;
       this.pair = pair;
@@ -143,7 +146,8 @@ public class TestShortCircuitCache {
         ExtendedBlockId key = new ExtendedBlockId(blockId, "test_bp1");
         return new ShortCircuitReplicaInfo(
             new ShortCircuitReplica(key,
-                pair.getFileInputStreams()[0], pair.getFileInputStreams()[1],
+                pair.getFileChannels()[0],
+                pair.getFileChannels()[1],
                 cache, Time.monotonicNow(), null));
       } catch (IOException e) {
         throw new RuntimeException(e);
@@ -162,14 +166,14 @@ public class TestShortCircuitCache {
   public void testAddAndRetrieve() throws Exception {
     final ShortCircuitCache cache =
         new ShortCircuitCache(10, 10000000, 10, 10000000, 1, 10000, 0);
-    final TestFileDescriptorPair pair = new TestFileDescriptorPair();
+    final TestFileChannelPair pair = new TestFileChannelPair();
     ShortCircuitReplicaInfo replicaInfo1 =
       cache.fetchOrCreate(new ExtendedBlockId(123, "test_bp1"),
         new SimpleReplicaCreator(123, cache, pair));
     Preconditions.checkNotNull(replicaInfo1.getReplica());
     Preconditions.checkState(replicaInfo1.getInvalidTokenException() == null);
-    pair.compareWith(replicaInfo1.getReplica().getDataStream(),
-                     replicaInfo1.getReplica().getMetaStream());
+    pair.compareWith(replicaInfo1.getReplica().getDataChannel(),
+                     replicaInfo1.getReplica().getMetaChannel());
     ShortCircuitReplicaInfo replicaInfo2 =
       cache.fetchOrCreate(new ExtendedBlockId(123, "test_bp1"),
           new ShortCircuitReplicaCreator() {
@@ -182,8 +186,8 @@ public class TestShortCircuitCache {
     Preconditions.checkNotNull(replicaInfo2.getReplica());
     Preconditions.checkState(replicaInfo2.getInvalidTokenException() == null);
     Preconditions.checkState(replicaInfo1 == replicaInfo2);
-    pair.compareWith(replicaInfo2.getReplica().getDataStream(),
-                     replicaInfo2.getReplica().getMetaStream());
+    pair.compareWith(replicaInfo2.getReplica().getDataChannel(),
+                     replicaInfo2.getReplica().getMetaChannel());
     replicaInfo1.getReplica().unref();
     replicaInfo2.getReplica().unref();
     
@@ -211,15 +215,15 @@ public class TestShortCircuitCache {
   public void testExpiry() throws Exception {
     final ShortCircuitCache cache =
         new ShortCircuitCache(2, 1, 1, 10000000, 1, 10000000, 0);
-    final TestFileDescriptorPair pair = new TestFileDescriptorPair();
+    final TestFileChannelPair pair = new TestFileChannelPair();
     ShortCircuitReplicaInfo replicaInfo1 =
       cache.fetchOrCreate(
         new ExtendedBlockId(123, "test_bp1"),
           new SimpleReplicaCreator(123, cache, pair));
     Preconditions.checkNotNull(replicaInfo1.getReplica());
     Preconditions.checkState(replicaInfo1.getInvalidTokenException() == null);
-    pair.compareWith(replicaInfo1.getReplica().getDataStream(),
-                     replicaInfo1.getReplica().getMetaStream());
+    pair.compareWith(replicaInfo1.getReplica().getDataChannel(),
+                     replicaInfo1.getReplica().getMetaChannel());
     replicaInfo1.getReplica().unref();
     final MutableBoolean triedToCreate = new MutableBoolean(false);
     do {
@@ -245,10 +249,10 @@ public class TestShortCircuitCache {
   public void testEviction() throws Exception {
     final ShortCircuitCache cache =
         new ShortCircuitCache(2, 10000000, 1, 10000000, 1, 10000, 0);
-    final TestFileDescriptorPair pairs[] = new TestFileDescriptorPair[] {
-      new TestFileDescriptorPair(),
-      new TestFileDescriptorPair(),
-      new TestFileDescriptorPair(),
+    final TestFileChannelPair pairs[] = new TestFileChannelPair[] {
+      new TestFileChannelPair(),
+      new TestFileChannelPair(),
+      new TestFileChannelPair(),
     };
     ShortCircuitReplicaInfo replicaInfos[] = new ShortCircuitReplicaInfo[] {
       null,
@@ -261,8 +265,8 @@ public class TestShortCircuitCache {
             new SimpleReplicaCreator(i, cache, pairs[i]));
       Preconditions.checkNotNull(replicaInfos[i].getReplica());
       Preconditions.checkState(replicaInfos[i].getInvalidTokenException() == null);
-      pairs[i].compareWith(replicaInfos[i].getReplica().getDataStream(),
-                           replicaInfos[i].getReplica().getMetaStream());
+      pairs[i].compareWith(replicaInfos[i].getReplica().getDataChannel(),
+                           replicaInfos[i].getReplica().getMetaChannel());
     }
     // At this point, we have 3 replicas in use.
     // Let's close them all.
@@ -283,8 +287,8 @@ public class TestShortCircuitCache {
       });
       Preconditions.checkNotNull(replicaInfos[i].getReplica());
       Preconditions.checkState(replicaInfos[i].getInvalidTokenException() == null);
-      pairs[i].compareWith(replicaInfos[i].getReplica().getDataStream(),
-                           replicaInfos[i].getReplica().getMetaStream());
+      pairs[i].compareWith(replicaInfos[i].getReplica().getDataChannel(),
+                           replicaInfos[i].getReplica().getMetaChannel());
     }
     // The first (oldest) replica should not be cached.
     final MutableBoolean calledCreate = new MutableBoolean(false);
@@ -314,9 +318,9 @@ public class TestShortCircuitCache {
     // Set up the cache with a short staleness time.
     final ShortCircuitCache cache =
         new ShortCircuitCache(2, 10000000, 1, 10000000, 1, 10, 0);
-    final TestFileDescriptorPair pairs[] = new TestFileDescriptorPair[] {
-      new TestFileDescriptorPair(),
-      new TestFileDescriptorPair(),
+    final TestFileChannelPair pairs[] = new TestFileChannelPair[] {
+      new TestFileChannelPair(),
+      new TestFileChannelPair(),
     };
     ShortCircuitReplicaInfo replicaInfos[] = new ShortCircuitReplicaInfo[] {
       null,
@@ -333,8 +337,8 @@ public class TestShortCircuitCache {
           try {
             return new ShortCircuitReplicaInfo(
                 new ShortCircuitReplica(key,
-                    pairs[iVal].getFileInputStreams()[0],
-                    pairs[iVal].getFileInputStreams()[1],
+                    pairs[iVal].getFileChannels()[0],
+                    pairs[iVal].getFileChannels()[1],
                     cache, Time.monotonicNow() + (iVal * HOUR_IN_MS), null));
           } catch (IOException e) {
             throw new RuntimeException(e);
@@ -343,8 +347,8 @@ public class TestShortCircuitCache {
       });
       Preconditions.checkNotNull(replicaInfos[i].getReplica());
       Preconditions.checkState(replicaInfos[i].getInvalidTokenException() == null);
-      pairs[i].compareWith(replicaInfos[i].getReplica().getDataStream(),
-                           replicaInfos[i].getReplica().getMetaStream());
+      pairs[i].compareWith(replicaInfos[i].getReplica().getDataChannel(),
+                           replicaInfos[i].getReplica().getMetaChannel());
     }
 
     // Keep trying to getOrCreate block 0 until it goes stale (and we must re-create.)
